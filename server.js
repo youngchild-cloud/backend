@@ -436,3 +436,75 @@ app.post('/login', (req, res) => {
     res.json({ token });
   });
 });
+
+//-----------------------------------
+//지니펫 로그인, 회원가입 백엔드 내용
+
+// 1. ginipet_users테이블 데이터 조회
+app.get('/ginipet', (req, res) => {
+  connection.query('SELECT * FROM ginipet_users', (err, results) => {
+    if (err) {
+      console.log('쿼리 오류 : ', err);
+      res.status(500).json({ err: 'DB 쿼리 오류' });
+      return;
+    }
+    res.json(results);
+  })
+})
+
+//2.아이디 중복확인 조회
+app.post('/check-username', (req, res) => {
+  const { username } = req.body;
+  const sql = 'SELECT * FROM ginipet_users WHERE username=?';
+  connection.query(sql, [username], (err, result) => {
+    if (err) return res.status(500).send(err);
+    res.json({ exists: result.length > 0 });
+  });
+})
+
+//3. 입력 get조회 post입력 delete삭제 
+app.post('/register', async (req, res) => {
+  //프론트엔드에서 요청한 경로로 body영역의 값을 받아 저장
+  const { username, password, email, tel } = req.body;
+
+  try { //성공시(값이 있는 경우)
+    const hash = await bcrypt.hash(password, 10);
+    const sql = `INSERT INTO ginipet_users (username, password, email, tel) VALUES (?, ?, ?, ?)`;
+
+    //입력이 끝나면 메세지 띄우기
+    connection.query(sql, [username, hash, email, tel], (err, result) => {
+      if (err) return res.status(500).send(err);
+      res.json({ message: '회원가입 성공' });
+    })
+  } catch (err) {//실패시(값이 없는 경우)
+    res.status(500).send(err); //에러메세지 띄우기
+  }
+});
+
+//4. 로그인폼에서 전달받은 username, password값을 조회하여 로그인처리
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+
+  const sql = 'SELECT * FROM ginipet_users WHERE username=?';
+
+  connection.query(sql, [username], async (err, result) => {
+    if (err || result.length == 0) {
+      return res.status(401).json({
+        error: '아이디 또는 비밀번호가 틀립니다.'
+      });
+    }
+    const user = result[0];
+    //패스워드 일치 여부검사
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: '아이디 또는 비밀번호가 틀립니다.' });
+    }
+    //토큰 생성 1시간
+    const token = jwt.sign({ id: user.id, username: user.username }, SECRET_KEY, {
+      expiresIn: '1h'
+    })
+    //토큰발급
+    res.json({ token });
+  })
+
+})
